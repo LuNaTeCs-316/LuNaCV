@@ -35,6 +35,9 @@ public class LuNaCVWidget extends StaticWidget {
     private JSlider minHue;
     private JSlider minSat;
     private JSlider minVal;
+    private JSlider maxHue;
+    private JSlider maxSat;
+    private JSlider maxVal;
 
     @Override
     public void init() {
@@ -42,13 +45,19 @@ public class LuNaCVWidget extends StaticWidget {
         frame = new Mat();
         threshold = new Mat();
         
-        minHue = new JSlider(0, 180, 90);
-        minSat = new JSlider(0, 255, 70);
+        minHue = new JSlider(0, 360, 116);
+        minSat = new JSlider(0, 255, 73);
         minVal = new JSlider(0, 255, 0);
+        maxHue = new JSlider(0, 360, 360);
+        maxSat = new JSlider(0, 255, 255);
+        maxVal = new JSlider(0, 255, 138);
         
         add(minHue);
         add(minSat);
         add(minVal);
+        add(maxHue);
+        add(maxSat);
+        add(maxVal);
     }
 
     @Override
@@ -67,9 +76,10 @@ public class LuNaCVWidget extends StaticWidget {
                 // Apply threshold
                 Core.inRange(frame,
                              new Scalar(minHue.getValue(), minSat.getValue(), minVal.getValue()),
-                             new Scalar(255, 255, 255),
+                             new Scalar(maxHue.getValue(), maxHue.getValue(), maxVal.getValue()),
                              threshold);
-                System.out.println("" + minHue.getValue() + " " + minSat.getValue() + " " + minVal.getValue());
+                System.out.println("" + minHue.getValue() + " " + minSat.getValue() + " " + minVal.getValue()
+                                    + " " + maxHue.getValue() + " " + maxSat.getValue() + " " + maxVal.getValue());
                 
                 // Morph operations
                 Mat morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_ERODE, new Size(3, 3));
@@ -78,14 +88,14 @@ public class LuNaCVWidget extends StaticWidget {
                 Imgproc.dilate(threshold, threshold, morphKernel);
                 
                 // Find contours
-                List<MatOfPoint> contours = new ArrayList<>();    
-                Mat hierarchy = new Mat();
-                Imgproc.findContours(threshold.clone(), contours, hierarchy, Imgproc.CHAIN_APPROX_SIMPLE, Imgproc.RETR_TREE);
+                //List<MatOfPoint> contours = new ArrayList<>();    
+                //Mat hierarchy = new Mat();
+                //Imgproc.findContours(threshold.clone(), contours, hierarchy, Imgproc.CHAIN_APPROX_SIMPLE, Imgproc.RETR_TREE);
                 
                 // Draw contours
-                for (int i = 0; i < contours.size(); i++) {
-                    Imgproc.drawContours(frame, contours, i, new Scalar(255, 255, 255));
-                }
+                //for (int i = 0; i < contours.size(); i++) {
+                //    Imgproc.drawContours(frame, contours, i, new Scalar(255, 255, 255));
+                //}
             }
         } else {
             System.err.println("Error: camera is not open");
