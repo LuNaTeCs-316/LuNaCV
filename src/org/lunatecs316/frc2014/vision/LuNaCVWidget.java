@@ -88,9 +88,9 @@ public class LuNaCVWidget extends StaticWidget {
                 Imgproc.dilate(threshold, threshold, morphKernel);
                 
                 // Find contours
-                //List<MatOfPoint> contours = new ArrayList<>();    
-                //Mat hierarchy = new Mat();
-                //Imgproc.findContours(threshold.clone(), contours, hierarchy, Imgproc.CHAIN_APPROX_SIMPLE, Imgproc.RETR_TREE);
+                List<MatOfPoint> contours = new ArrayList<>();    
+                Mat hierarchy = new Mat();
+                Imgproc.findContours(threshold.clone(), contours, hierarchy, Imgproc.CHAIN_APPROX_SIMPLE, Imgproc.RETR_TREE);
                 
                 // Draw contours
                 //for (int i = 0; i < contours.size(); i++) {
