@@ -2,6 +2,7 @@ package org.lunatecs316.frc2014.vision;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.File;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JFrame;
@@ -14,24 +15,21 @@ import org.opencv.highgui.VideoCapture;
  * @author Domenic
  */
 public class AcquireSampleImages {
-    public static final String OPENCV_LIB_PATH = "C:\\OpenCV\\build\\java\\x64\\opencv_java247.dll";
-    public static final String TEAM_IP = "10.3.16.11";
-    
     private VideoCapture camera;
     private Mat frame;
     
     private int saveCount = 0;
     
     public void run() {
-        System.load(OPENCV_LIB_PATH);
-        camera = new VideoCapture("http://" + TEAM_IP + "/mjpg/video.mjpg");
+        System.loadLibrary("opencv_java247");
+        camera = new VideoCapture("http://10.3.16.11/mjpg/video.mjpg");
         frame = new Mat();
         
         JFrame window = new JFrame();
         window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         window.getContentPane().setLayout(new BoxLayout(window.getContentPane(), BoxLayout.Y_AXIS));
         
-        CVMatPanel imagePanel = new CVMatPanel(640, 480);
+        CVMatPanel imagePanel = new CVMatPanel(320, 240);
         window.getContentPane().add(imagePanel);
         
         JButton saveButton = new JButton("Save");
@@ -60,11 +58,17 @@ public class AcquireSampleImages {
     }
     
     public void saveImage() {
-        Highgui.imwrite("image" + ++saveCount + ".jpg", frame);
+        File f = null;
+        String filename = null;
+        do {
+            filename = "sample_images/image" + ++saveCount + ".jpg";
+            System.out.println(filename);
+            f = new File(filename);
+        } while (f.isFile());
+        Highgui.imwrite(filename, frame);
     }
     
     public static void main(String[] args) {
-        AcquireSampleImages program = new AcquireSampleImages();
-        program.run();
+        new AcquireSampleImages().run();
     }
 }

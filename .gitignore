@@ -38,3 +38,7 @@ dist/
 nbdist/
 nbactions.xml
 nb-configuration.xml
+
+## Custom ##
+sample_images
+*.jpg
