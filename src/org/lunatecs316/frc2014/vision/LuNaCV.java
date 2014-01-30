@@ -18,7 +18,6 @@ import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
-import org.opencv.core.Rect;
 import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
@@ -55,12 +54,13 @@ public class LuNaCV {
     public static final int kCameraViewAngle = 47;          // Degrees
     // Compute once instead of every loop
     public static final double kTanTheta = Math.tan(((kCameraViewAngle / 2) * Math.PI) / 180);
-    
+
     private NetworkTable table;
     private JFrame frame;
     private CVMatPanel originalPanel;
     private CVMatPanel processedPanel;
-    
+    private VideoCapture camera;
+
     private JSlider minHueSlider;
     private JSlider minSatSlider;
     private JSlider minValSlider;
@@ -70,73 +70,89 @@ public class LuNaCV {
 
     private boolean done = false;
     private boolean debug;
-    
+
     public LuNaCV() {
         this(false);
     }
-    
+
     public LuNaCV(boolean debug) {
         this.debug = debug;
     }
-    
+
     public static void main(String[] args) {
         new LuNaCV().run();
     }
-    
+
     public void run() {
         System.loadLibrary("opencv_java247");
-        
+
+        // Initialize NetworkTables
         //NetworkTable.setClientMode();
         //NetworkTable.setIPAddress("10.3.16.2");
         //table = NetworkTable.getTable("vision-data");
-        
+
         // Setup the GUI
         setupAndCreateGUI();
-      
-        // Open the camera
-        VideoCapture camera = new VideoCapture(kCameraAddress);
-        //VideoCapture camera = new VideoCapture(0);
-        Mat originalImage = new Mat();
-        
-        // Main loop
-//        while (!done) {
-//            if (camera.isOpened()) {
-//                if (camera.read(originalImage)) {
-//                    Mat processed = processImage(originalImage);
-//                    originalPanel.showMat(originalImage);
-//                    processedPanel.showMat(processed);
-//                } else {
-//                    System.err.println("Error: unable to read image");
-//                }
-//            } else {
-//                System.out.println("Error: camera is not open");
-//                try {
-//                    Thread.sleep(5000);
-//                } catch (InterruptedException ex) {
-//                }
-//            }
-//        }
-        
-        for (int i = 1; i <= 11; i++) {
+
+        // Open the camera feed
+        camera = new VideoCapture(kCameraAddress);
+
+        //processCameraFeed();
+        processSampleImages();
+        //while (true) {
+        //    processSampleImage("sample_images/image1.jpg");
+        //}
+    }
+
+    /**
+     * Process a continuous feed of images from the camera
+     */
+    private void processCameraFeed() {
+        Mat original = new Mat();
+        while (!done) {
+            if (camera.isOpened()) {
+                if (camera.read(original)) {
+                    Mat processed = processImage(original);
+                    originalPanel.showMat(original);
+                    processedPanel.showMat(processed);
+                } else {
+                    System.err.println("Error: unable to read image");
+                }
+            } else {
+                System.out.println("Error: camera is not open");
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ex) {
+                }
+            }
+        }
+    }
+
+    /**
+     * Process the sample images. Used for testing
+     */
+    private void processSampleImages() {
+        for (int i = 1; i <= 10; i++) {
             System.out.println("Image " + i);
-            originalImage = Highgui.imread("sample_images/image" + i + ".jpg");
-            Mat processed = processImage(originalImage);
-            originalPanel.showMat(originalImage);
-            processedPanel.showMat(processed);
+            processSampleImage("sample_images/image" + i + ".jpg");
             try {
                 Thread.sleep(1500);
             } catch (InterruptedException ex){
             }
         }
-        
-//        while (true) {
-//            originalImage = Highgui.imread("sample_images/image1.jpg");
-//            Mat processed = processImage(originalImage);
-//            originalPanel.showMat(originalImage);
-//            processedPanel.showMat(processed);
-//       }
     }
-    
+
+    /**
+     * Process a single sample image
+     * @param filepath the path to the image
+     */
+    private void processSampleImage(String filepath) {
+        Mat original = Highgui.imread(filepath);
+        Mat processed = processImage(original);
+        originalPanel.showMat(original);
+        processedPanel.showMat(processed);
+    }
+
     /**
      * Create the GUI elements
      */
@@ -151,13 +167,13 @@ public class LuNaCV {
             }
         });
         frame.getContentPane().setLayout(new GridLayout(2, 2));
-        
+
         // Add Image panels
         originalPanel = new CVMatPanel(kImageWidth, kImageHeight);
         frame.getContentPane().add(originalPanel);
         processedPanel = new CVMatPanel(kImageWidth, kImageHeight);
         frame.getContentPane().add(processedPanel);
-        
+
         // Add sliders
         JPanel sliders = new JPanel();
         sliders.setLayout(new BoxLayout(sliders, BoxLayout.Y_AXIS));
@@ -186,12 +202,12 @@ public class LuNaCV {
         sliders.add(maxValLabel);
         sliders.add(maxValSlider);
         frame.getContentPane().add(sliders);
-        
+
         // Display the frame
         frame.pack();
         frame.setVisible(true);
     }
-    
+
     /**
      * Process the image and search for the targets
      * @param image the original image
@@ -199,51 +215,51 @@ public class LuNaCV {
      */
     private Mat processImage(Mat image) {
         double startTime = System.currentTimeMillis();
-        
+
         // Convert image to HSV color space
         Mat hsv = new Mat();
         Imgproc.cvtColor(image, hsv, Imgproc.COLOR_BGR2HSV);
-        
+
         // Apply color threshold
         Mat thresh = new Mat();
         Scalar lowerBound = new Scalar(minHueSlider.getValue(), minSatSlider.getValue(), minValSlider.getValue());
         Scalar upperBound = new Scalar(maxHueSlider.getValue(), maxSatSlider.getValue(), maxValSlider.getValue());
         Core.inRange(hsv, lowerBound, upperBound, thresh);
         //System.out.println(lowerBound + " " + upperBound);
-        
+
         // Morph operations to filter out small blobs
         Mat morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(kMorphKernelSize, kMorphKernelSize));
         Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_OPEN, morphKernel);
-        
+
         // Find contours
         List<MatOfPoint> contours = new ArrayList<>();
         Mat heirarchy = new Mat();
         Imgproc.findContours(thresh.clone(), contours, heirarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
-        
+
         // Check the number of contours
         if (contours.size() > 2) {
             System.out.println("Warning: more than 2 contours found! Proceed with caution...");
         }
-        
+
         // Contours / Convex Hull / Polygon Approximation / Bounding Rectangles
         MatOfInt hullIndices = new MatOfInt();
         List<Point> hullPointList = new ArrayList<>();
         MatOfPoint hull = new MatOfPoint();
         MatOfPoint2f approx2f = new MatOfPoint2f();
         List<MatOfPoint> polygons = new ArrayList<>();
-        Rect boundingRect;
-        RotatedRect rotatedRect;
+        RotatedRect target;
+        List<RotatedRect> targets = new ArrayList<>();
         Mat drawing = Mat.zeros(thresh.size(), thresh.type());
         for (int i = 0; i < contours.size(); i++) {
             MatOfPoint contour = contours.get(i);
-            
+
             // Skip any contours too big or small to be the target
             double contourArea = Imgproc.contourArea(contour);
             if (contourArea < kMinTargetArea || contourArea > kMaxTargetArea) {
                 polygons.add(new MatOfPoint());
                 continue;
             }
-            
+
             // Convex Hull
             Imgproc.convexHull(contour, hullIndices);   // hullIndices is the indices of the points
                                                         // in the original contour that form the convex hull
@@ -255,57 +271,60 @@ public class LuNaCV {
                 hullPointList.add(contour.toList().get(hullIndexList.get(j)));
             }
             hull.fromList(hullPointList);   // Create a MatOfPoint from the list we built
-            
+
             // Approximate a polygon from the convex hull
             MatOfPoint2f contour2f = new MatOfPoint2f(hull.toArray());
             double contourLength = Imgproc.arcLength(contour2f, true);
             Imgproc.approxPolyDP(contour2f, approx2f, contourLength * kApproxPolyTolerance, true);
             MatOfPoint polygon = new MatOfPoint(approx2f.toArray());
             polygons.add(polygon);
-            
+
             // Skip anything that isn't a rectangle
             if (polygon.total() != 4)
                 System.out.println("Bad target.");
 
             // Find a rotated rectangle of the minimum area enclosing the target
-            rotatedRect = Imgproc.minAreaRect(approx2f);
+            target = Imgproc.minAreaRect(approx2f);
+            targets.add(target);
             Point[] rectPoints = new Point[4];
-            rotatedRect.points(rectPoints);
+            target.points(rectPoints);
             for (int j = 0; j < 4; j++) {
                 // Overlay
                 Core.line(image, rectPoints[j], rectPoints[(j + 1) % 4], new Scalar(0, 0, 255));
             }
-            
+
+            // Check the orientation of the target
+            boolean isHorizontal = target.size.width > target.size.height;
+
             // Print information on targets
             System.out.print("Target " + i + ": Vertices " + polygon.total() + " ");
-            System.out.print("Position: (" + rotatedRect.center.x + "," + rotatedRect.center.y + ") ");
-            System.out.print("Width: " + rotatedRect.size.width + " Height: " + rotatedRect.size.height + " ");
-            System.out.print("Area: " + (rotatedRect.size.width * rotatedRect.size.height) + " ");
-            System.out.print("Angle: " + rotatedRect.angle + " ");
-            boolean horizontal = rotatedRect.size.width > rotatedRect.size.height;
-            System.out.print("Distance: " + getTargetDistance(rotatedRect.size.width, horizontal) + " ");
-            if (horizontal) {
-                System.out.println("Goal is hot?");
+            System.out.print("Position: (" + target.center.x + "," + target.center.y + ") ");
+            System.out.print("Width: " + target.size.width + " Height: " + target.size.height + " ");
+            System.out.print("Area: " + (target.size.width * target.size.height) + " ");
+            System.out.print("Angle: " + target.angle + " ");
+            System.out.print("Distance: " + getTargetDistance(target.size.width, isHorizontal) + " ");
+            if (isHorizontal) {
+                System.out.print("Goal hot?");
             } else {
                 System.out.println();
             }
-            
+
             // Overlay the bounding rectangle on the original image
 //            Core.rectangle(image, boundingRect.tl(), boundingRect.br(), new Scalar(255, 0, 0));
-            
+
 //            Imgproc.drawContours(drawing, contours, i, new Scalar(255, 255, 255));
             Imgproc.drawContours(drawing, polygons, i, new Scalar(255, 255, 255));
         }
-        
+
         System.out.println("Image processed in " + (System.currentTimeMillis() - startTime) + "ms");
-        
+
         // Send data to the robot
         //table.putBoolean("goalIsHot", true);
-        
+
         System.out.println();
         return drawing;
     }
-    
+
     /**
      * Get the distance to the specified target
      * @param pxWidth
