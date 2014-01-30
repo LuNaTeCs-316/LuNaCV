@@ -35,16 +35,16 @@ public class LuNaCV {
     public static final int kImageWidth = 320;
     public static final int kImageHeight = 240;
 
-    public static final int kMinHue = 80;
-    public static final int kMinSat = 55;
-    public static final int kMinVal = 95;
+    public static final int kMinHue = 70;
+    public static final int kMinSat = 53;
+    public static final int kMinVal = 93;
     public static final int kMaxHue = 180;
     public static final int kMaxSat = 255;
     public static final int kMaxVal = 255;
     public static final int kMorphKernelSize = 2;
 
     public static final int kMinTargetArea = 75;            // px
-    public static final int kMaxTargetArea = 500;           // px
+    public static final int kMaxTargetArea = 750;           // px
     public static final double kApproxPolyTolerance = 0.0295;
 
     public static final double kStaticTargetWidth = 4;      // Inches
@@ -97,8 +97,8 @@ public class LuNaCV {
         // Open the camera feed
         camera = new VideoCapture(kCameraAddress);
 
-        //processCameraFeed();
-        processSampleImages();
+        processCameraFeed();
+        //processSampleImages();
         //while (true) {
         //    processSampleImage("sample_images/image1.jpg");
         //}
@@ -225,7 +225,7 @@ public class LuNaCV {
         Scalar lowerBound = new Scalar(minHueSlider.getValue(), minSatSlider.getValue(), minValSlider.getValue());
         Scalar upperBound = new Scalar(maxHueSlider.getValue(), maxSatSlider.getValue(), maxValSlider.getValue());
         Core.inRange(hsv, lowerBound, upperBound, thresh);
-        //System.out.println(lowerBound + " " + upperBound);
+        System.out.println(lowerBound + " " + upperBound);
 
         // Morph operations to filter out small blobs
         Mat morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(kMorphKernelSize, kMorphKernelSize));
@@ -248,7 +248,8 @@ public class LuNaCV {
         MatOfPoint2f approx2f = new MatOfPoint2f();
         List<MatOfPoint> polygons = new ArrayList<>();
         RotatedRect target;
-        List<RotatedRect> targets = new ArrayList<>();
+        List<RotatedRect> horizontalTargets = new ArrayList<>();
+        List<RotatedRect> verticalTargets = new ArrayList<>();
         Mat drawing = Mat.zeros(thresh.size(), thresh.type());
         for (int i = 0; i < contours.size(); i++) {
             MatOfPoint contour = contours.get(i);
@@ -285,36 +286,45 @@ public class LuNaCV {
 
             // Find a rotated rectangle of the minimum area enclosing the target
             target = Imgproc.minAreaRect(approx2f);
-            targets.add(target);
+
+            // Draw the rectangle over the original image
             Point[] rectPoints = new Point[4];
             target.points(rectPoints);
             for (int j = 0; j < 4; j++) {
-                // Overlay
-                Core.line(image, rectPoints[j], rectPoints[(j + 1) % 4], new Scalar(0, 0, 255));
+                Core.line(image, rectPoints[j], rectPoints[(j + 1) % 4], new Scalar(255, 0, 0), 2);
             }
 
             // Check the orientation of the target
-            boolean isHorizontal = target.size.width > target.size.height;
+            boolean isHorizontal = target.size.width < target.size.height;
+            if (isHorizontal) {
+                horizontalTargets.add(target);
+            } else {
+                verticalTargets.add(target);
+            }
 
-            // Print information on targets
+            // Display information about target
             System.out.print("Target " + i + ": Vertices " + polygon.total() + " ");
             System.out.print("Position: (" + target.center.x + "," + target.center.y + ") ");
             System.out.print("Width: " + target.size.width + " Height: " + target.size.height + " ");
             System.out.print("Area: " + (target.size.width * target.size.height) + " ");
             System.out.print("Angle: " + target.angle + " ");
-            System.out.print("Distance: " + getTargetDistance(target.size.width, isHorizontal) + " ");
-            if (isHorizontal) {
-                System.out.print("Goal hot?");
-            } else {
-                System.out.println();
-            }
+            System.out.print("Distance: " + getTargetDistance(target.size.width, isHorizontal) + "\n");
 
-            // Overlay the bounding rectangle on the original image
-//            Core.rectangle(image, boundingRect.tl(), boundingRect.br(), new Scalar(255, 0, 0));
-
-//            Imgproc.drawContours(drawing, contours, i, new Scalar(255, 255, 255));
-            Imgproc.drawContours(drawing, polygons, i, new Scalar(255, 255, 255));
+            // Draw the polygons in the output image
+            Imgproc.drawContours(drawing, polygons, i, new Scalar(255, 255, 255), -1);
         }
+
+        // Attempt to pair a horizontal target with the vertical target
+
+        // Determine if the goal is hot or not
+        if (verticalTargets.size() <= 1) {
+            if (horizontalTargets.isEmpty()) {
+                System.out.println("Goal is not hot");
+            } else {
+                System.out.println("Goal is hot");
+            }
+        }
+
 
         System.out.println("Image processed in " + (System.currentTimeMillis() - startTime) + "ms");
 
