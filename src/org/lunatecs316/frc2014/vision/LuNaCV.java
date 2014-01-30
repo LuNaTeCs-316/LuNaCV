@@ -14,9 +14,12 @@ import javax.swing.JSlider;
 import javax.swing.WindowConstants;
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Point;
 import org.opencv.core.Rect;
+import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.highgui.Highgui;
@@ -39,12 +42,11 @@ public class LuNaCV {
     public static final int kMaxHue = 180;
     public static final int kMaxSat = 255;
     public static final int kMaxVal = 255;
-    public static final int kErodeSize = 2;
-    public static final int kDilateSize = 2;
+    public static final int kMorphKernelSize = 2;
 
     public static final int kMinTargetArea = 75;            // px
     public static final int kMaxTargetArea = 500;           // px
-    public static final double kApproxPolyTolerance = 0.0275;
+    public static final double kApproxPolyTolerance = 0.0295;
 
     public static final double kStaticTargetWidth = 4;      // Inches
     public static final double kStaticTargetHeight = 32;    // Inches
@@ -65,8 +67,6 @@ public class LuNaCV {
     private JSlider maxHueSlider;
     private JSlider maxSatSlider;
     private JSlider maxValSlider;
-    private JSlider erodeSlider;
-    private JSlider dilateSlider;
 
     private boolean done = false;
     private boolean debug;
@@ -173,10 +173,6 @@ public class LuNaCV {
         maxSatSlider = new JSlider(JSlider.HORIZONTAL, 0, 255, kMaxSat);
         JLabel maxValLabel = new JLabel("maxVal");
         maxValSlider = new JSlider(JSlider.HORIZONTAL, 0, 255, kMaxVal);
-        JLabel erodeLabel = new JLabel("erodeSize");
-        erodeSlider = new JSlider(JSlider.HORIZONTAL, 1, 10, kErodeSize);
-        JLabel dilateLabel = new JLabel("dilateSize");
-        dilateSlider = new JSlider(JSlider.HORIZONTAL, 1, 10, kDilateSize);
         sliders.add(minHueLabel);
         sliders.add(minHueSlider);
         sliders.add(minSatLabel);
@@ -189,10 +185,6 @@ public class LuNaCV {
         sliders.add(maxSatSlider);
         sliders.add(maxValLabel);
         sliders.add(maxValSlider);
-        sliders.add(erodeLabel);
-        sliders.add(erodeSlider);
-        sliders.add(dilateLabel);
-        sliders.add(dilateSlider);
         frame.getContentPane().add(sliders);
         
         // Display the frame
@@ -220,24 +212,31 @@ public class LuNaCV {
         //System.out.println(lowerBound + " " + upperBound);
         
         // Morph operations to filter out small blobs
-        Mat morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_ERODE, new Size(erodeSlider.getValue(), erodeSlider.getValue()));
-        Imgproc.erode(thresh, thresh, morphKernel);
-        morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(dilateSlider.getValue(), dilateSlider.getValue()));
-        Imgproc.dilate(thresh, thresh, morphKernel);
+        Mat morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(kMorphKernelSize, kMorphKernelSize));
+        Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_OPEN, morphKernel);
         
         // Find contours
         List<MatOfPoint> contours = new ArrayList<>();
         Mat heirarchy = new Mat();
         Imgproc.findContours(thresh.clone(), contours, heirarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
         
+        // Check the number of contours
+        if (contours.size() > 2) {
+            System.out.println("Warning: more than 2 contours found! Proceed with caution...");
+        }
+        
         // Contours / Convex Hull / Polygon Approximation / Bounding Rectangles
-        MatOfPoint2f approx = new MatOfPoint2f();
+        MatOfInt hullIndices = new MatOfInt();
+        List<Point> hullPointList = new ArrayList<>();
+        MatOfPoint hull = new MatOfPoint();
+        MatOfPoint2f approx2f = new MatOfPoint2f();
         List<MatOfPoint> polygons = new ArrayList<>();
         Rect boundingRect;
+        RotatedRect rotatedRect;
         Mat drawing = Mat.zeros(thresh.size(), thresh.type());
         for (int i = 0; i < contours.size(); i++) {
             MatOfPoint contour = contours.get(i);
-
+            
             // Skip any contours too big or small to be the target
             double contourArea = Imgproc.contourArea(contour);
             if (contourArea < kMinTargetArea || contourArea > kMaxTargetArea) {
@@ -245,23 +244,46 @@ public class LuNaCV {
                 continue;
             }
             
-            // Approximate polygon from contour
-            MatOfPoint2f contour2f = new MatOfPoint2f(contour.toArray());
-            double contourLength = Imgproc.arcLength(contour2f, true);
-            Imgproc.approxPolyDP(contour2f, approx, contourLength * kApproxPolyTolerance, true);
-            MatOfPoint approxPointMat = new MatOfPoint(approx.toArray());
-            polygons.add(approxPointMat);
+            // Convex Hull
+            Imgproc.convexHull(contour, hullIndices);   // hullIndices is the indices of the points
+                                                        // in the original contour that form the convex hull
+
+            List<Integer> hullIndexList = hullIndices.toList();
+            hullPointList.clear();
+            for (int j = 0; j < hullIndexList.size(); j++) {
+                // Build the required points from the contour into a list
+                hullPointList.add(contour.toList().get(hullIndexList.get(j)));
+            }
+            hull.fromList(hullPointList);   // Create a MatOfPoint from the list we built
             
-            // Find the bounding rectangle
-            boundingRect = Imgproc.boundingRect(approxPointMat);
+            // Approximate a polygon from the convex hull
+            MatOfPoint2f contour2f = new MatOfPoint2f(hull.toArray());
+            double contourLength = Imgproc.arcLength(contour2f, true);
+            Imgproc.approxPolyDP(contour2f, approx2f, contourLength * kApproxPolyTolerance, true);
+            MatOfPoint polygon = new MatOfPoint(approx2f.toArray());
+            polygons.add(polygon);
+            
+            // Skip anything that isn't a rectangle
+            if (polygon.total() != 4)
+                System.out.println("Bad target.");
+
+            // Find a rotated rectangle of the minimum area enclosing the target
+            rotatedRect = Imgproc.minAreaRect(approx2f);
+            Point[] rectPoints = new Point[4];
+            rotatedRect.points(rectPoints);
+            for (int j = 0; j < 4; j++) {
+                // Overlay
+                Core.line(image, rectPoints[j], rectPoints[(j + 1) % 4], new Scalar(0, 0, 255));
+            }
             
             // Print information on targets
-            System.out.print("Target " + i + ": Vertices " + approxPointMat.total() + " ");
-            System.out.print("Position: (" + boundingRect.x + "," + boundingRect.y + ") ");
-            System.out.print("Width: " + boundingRect.width + " Height: " + boundingRect.height + " ");
-            System.out.print("Area: " + (boundingRect.width * boundingRect.height) + " ");
-            boolean horizontal = boundingRect.width > boundingRect.height;
-            System.out.print("Distance: " + getTargetDistance(boundingRect.width, horizontal) + " ");
+            System.out.print("Target " + i + ": Vertices " + polygon.total() + " ");
+            System.out.print("Position: (" + rotatedRect.center.x + "," + rotatedRect.center.y + ") ");
+            System.out.print("Width: " + rotatedRect.size.width + " Height: " + rotatedRect.size.height + " ");
+            System.out.print("Area: " + (rotatedRect.size.width * rotatedRect.size.height) + " ");
+            System.out.print("Angle: " + rotatedRect.angle + " ");
+            boolean horizontal = rotatedRect.size.width > rotatedRect.size.height;
+            System.out.print("Distance: " + getTargetDistance(rotatedRect.size.width, horizontal) + " ");
             if (horizontal) {
                 System.out.println("Goal is hot?");
             } else {
@@ -269,7 +291,7 @@ public class LuNaCV {
             }
             
             // Overlay the bounding rectangle on the original image
-            Core.rectangle(image, boundingRect.tl(), boundingRect.br(), new Scalar(255, 0, 0));
+//            Core.rectangle(image, boundingRect.tl(), boundingRect.br(), new Scalar(255, 0, 0));
             
 //            Imgproc.drawContours(drawing, contours, i, new Scalar(255, 255, 255));
             Imgproc.drawContours(drawing, polygons, i, new Scalar(255, 255, 255));
