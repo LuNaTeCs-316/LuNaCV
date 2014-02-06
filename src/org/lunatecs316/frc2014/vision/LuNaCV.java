@@ -69,35 +69,26 @@ public class LuNaCV {
     private JSlider maxValSlider;
 
     private boolean done = false;
-    private boolean debug;
-
-    public LuNaCV() {
-        this(false);
-    }
-
-    public LuNaCV(boolean debug) {
-        this.debug = debug;
-    }
-
-    public static void main(String[] args) {
-        new LuNaCV().run();
-    }
 
     public void run() {
+        // Load OpenCV native library
         System.loadLibrary("opencv_java247");
 
         // Initialize NetworkTables
-        //NetworkTable.setClientMode();
-        //NetworkTable.setIPAddress("10.3.16.2");
-        //table = NetworkTable.getTable("vision-data");
+        NetworkTable.setClientMode();
+        NetworkTable.setIPAddress("10.3.16.2");
+        table = NetworkTable.getTable("visionData");
 
         // Setup the GUI
-        setupAndCreateGUI();
+        setupGUI();
 
         // Open the camera feed
         camera = new VideoCapture(kCameraAddress);
 
+        // Process images from the camera
         processCameraFeed();
+
+        // Test routines
         //processSampleImages();
         //while (true) {
         //    processSampleImage("sample_images/image1.jpg");
@@ -105,58 +96,9 @@ public class LuNaCV {
     }
 
     /**
-     * Process a continuous feed of images from the camera
-     */
-    private void processCameraFeed() {
-        Mat original = new Mat();
-        while (!done) {
-            if (camera.isOpened()) {
-                if (camera.read(original)) {
-                    Mat processed = processImage(original);
-                    originalPanel.showMat(original);
-                    processedPanel.showMat(processed);
-                } else {
-                    System.err.println("Error: unable to read image");
-                }
-            } else {
-                System.out.println("Error: camera is not open");
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException ex) {
-                }
-            }
-        }
-    }
-
-    /**
-     * Process the sample images. Used for testing
-     */
-    private void processSampleImages() {
-        for (int i = 1; i <= 10; i++) {
-            System.out.println("Image " + i);
-            processSampleImage("sample_images/image" + i + ".jpg");
-            try {
-                Thread.sleep(1500);
-            } catch (InterruptedException ex){
-            }
-        }
-    }
-
-    /**
-     * Process a single sample image
-     * @param filepath the path to the image
-     */
-    private void processSampleImage(String filepath) {
-        Mat original = Highgui.imread(filepath);
-        Mat processed = processImage(original);
-        originalPanel.showMat(original);
-        processedPanel.showMat(processed);
-    }
-
-    /**
      * Create the GUI elements
      */
-    private void setupAndCreateGUI() {
+    private void setupGUI() {
         // Setup GUI
         frame = new JFrame("LuNaCV");
         frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
@@ -209,6 +151,57 @@ public class LuNaCV {
     }
 
     /**
+     * Process a continuous feed of images from the camera
+     */
+    private void processCameraFeed() {
+        Mat original = new Mat();
+        while (!done) {
+            if (camera.isOpened() && table.getBoolean("enabled", true)) {
+                if (camera.read(original)) {
+                    Mat processed = processImage(original);
+                    originalPanel.showMat(original);
+                    processedPanel.showMat(processed);
+                } else {
+                    System.err.println("Error: unable to read image");
+                }
+            } else {
+                System.out.println("Error: camera is not open");
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ex) {
+                }
+            }
+        }
+    }
+
+    /**
+     * Process the sample images. Used for testing
+     */
+    private void processSampleImages() {
+        for (int i = 1; i <= 10; i++) {
+            System.out.println("Image " + i);
+            processSampleImage("sample_images/image" + i + ".jpg");
+            try {
+                Thread.sleep(1500);
+            } catch (InterruptedException ex){
+            }
+        }
+    }
+
+    /**
+     * Process a single sample image
+     * @param filepath the path to the image
+     */
+    private void processSampleImage(String filepath) {
+        Mat original = Highgui.imread(filepath);
+        Mat processed = processImage(original);
+        originalPanel.showMat(original);
+        processedPanel.showMat(processed);
+    }
+
+    
+
+    /**
      * Process the image and search for the targets
      * @param image the original image
      * @return the processed image
@@ -225,7 +218,7 @@ public class LuNaCV {
         Scalar lowerBound = new Scalar(minHueSlider.getValue(), minSatSlider.getValue(), minValSlider.getValue());
         Scalar upperBound = new Scalar(maxHueSlider.getValue(), maxSatSlider.getValue(), maxValSlider.getValue());
         Core.inRange(hsv, lowerBound, upperBound, thresh);
-        System.out.println(lowerBound + " " + upperBound);
+        System.out.println("Threshold: " + lowerBound + " " + upperBound);
 
         // Morph operations to filter out small blobs
         Mat morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(kMorphKernelSize, kMorphKernelSize));
@@ -314,8 +307,6 @@ public class LuNaCV {
             Imgproc.drawContours(drawing, polygons, i, new Scalar(255, 255, 255), -1);
         }
 
-        // Attempt to pair a horizontal target with the vertical target
-
         // Determine if the goal is hot or not
         if (verticalTargets.size() <= 1) {
             if (horizontalTargets.isEmpty()) {
@@ -325,11 +316,10 @@ public class LuNaCV {
             }
         }
 
-
         System.out.println("Image processed in " + (System.currentTimeMillis() - startTime) + "ms");
 
         // Send data to the robot
-        //table.putBoolean("goalIsHot", true);
+        table.putBoolean("goalIsHot", true);
 
         System.out.println();
         return drawing;
@@ -349,5 +339,9 @@ public class LuNaCV {
             result = (kStaticTargetWidth * kImageWidth) / (2 * kTanTheta * pxWidth);
         }
         return result;
+    }
+
+    public static void main(String[] args) {
+        new LuNaCV().run();
     }
 }
