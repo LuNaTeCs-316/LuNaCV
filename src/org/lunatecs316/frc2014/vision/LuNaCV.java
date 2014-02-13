@@ -18,7 +18,7 @@ import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
-import org.opencv.core.RotatedRect;
+import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.highgui.Highgui;
@@ -69,30 +69,34 @@ public class LuNaCV {
     private JSlider maxValSlider;
 
     private boolean done = false;
+    private boolean debug = false;
 
     public void run() {
         // Load OpenCV native library
         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
 
         // Initialize NetworkTables
-        NetworkTable.setClientMode();
-        NetworkTable.setIPAddress("10.3.16.2");
-        table = NetworkTable.getTable("visionData");
+        if (!debug) {
+            NetworkTable.setClientMode();
+            NetworkTable.setIPAddress("10.3.16.2");
+            table = NetworkTable.getTable("visionData");
+        }
 
         // Setup the GUI
         setupGUI();
 
-        // Open the camera feed
-        camera = new VideoCapture(kCameraAddress);
+        if (debug) {
+            processSampleImages();
+            //while (true) {
+            //    processSampleImage("sample_images/image1.jpg");
+            //}
+        } else {
+            // Open the camera feed
+            camera = new VideoCapture(kCameraAddress);
 
-        // Process images from the camera
-        processCameraFeed();
-
-        // Test routines
-        //processSampleImages();
-        //while (true) {
-        //    processSampleImage("sample_images/image1.jpg");
-        //}
+            // Process images from the camera
+            processCameraFeed();
+        }
     }
 
     /**
@@ -156,7 +160,7 @@ public class LuNaCV {
     private void processCameraFeed() {
         Mat original = new Mat();
         while (!done) {
-            if (camera.isOpened() && table.getBoolean("enabled", true)) {
+            if (camera.isOpened()) {// && table.getBoolean("enabled", true)) {
                 if (camera.read(original)) {
                     Mat processed = processImage(original);
                     originalPanel.showMat(original);
@@ -182,7 +186,7 @@ public class LuNaCV {
             System.out.println("Image " + i);
             processSampleImage("sample_images/image" + i + ".jpg");
             try {
-                Thread.sleep(1500);
+                Thread.sleep(2000);
             } catch (InterruptedException ex){
             }
         }
@@ -234,23 +238,23 @@ public class LuNaCV {
             System.out.println("Warning: more than 2 contours found! Proceed with caution...");
         }
 
-        // Contours / Convex Hull / Polygon Approximation / Bounding Rectangles
+        // Process contours for targets
         MatOfInt hullIndices = new MatOfInt();
         List<Point> hullPointList = new ArrayList<>();
         MatOfPoint hull = new MatOfPoint();
         MatOfPoint2f approx2f = new MatOfPoint2f();
         List<MatOfPoint> polygons = new ArrayList<>();
-        RotatedRect target;
-        List<RotatedRect> horizontalTargets = new ArrayList<>();
-        List<RotatedRect> verticalTargets = new ArrayList<>();
-        Mat drawing = Mat.zeros(thresh.size(), thresh.type());
+        Rect target;
+        List<Rect> horizontalTargets = new ArrayList<>();
+        List<Rect> verticalTargets = new ArrayList<>();
+        double distanceSum = 0;
         for (int i = 0; i < contours.size(); i++) {
+            // Get the next contour
             MatOfPoint contour = contours.get(i);
 
             // Skip any contours too big or small to be the target
             double contourArea = Imgproc.contourArea(contour);
             if (contourArea < kMinTargetArea || contourArea > kMaxTargetArea) {
-                polygons.add(new MatOfPoint());
                 continue;
             }
 
@@ -273,22 +277,14 @@ public class LuNaCV {
             MatOfPoint polygon = new MatOfPoint(approx2f.toArray());
             polygons.add(polygon);
 
-            // Skip anything that isn't a rectangle
-            if (polygon.total() != 4)
-                System.out.println("Bad target.");
-
-            // Find a rotated rectangle of the minimum area enclosing the target
-            target = Imgproc.minAreaRect(approx2f);
+            // Find the bounding rectangle of the polygon
+            target = Imgproc.boundingRect(polygon);
 
             // Draw the rectangle over the original image
-            Point[] rectPoints = new Point[4];
-            target.points(rectPoints);
-            for (int j = 0; j < 4; j++) {
-                Core.line(image, rectPoints[j], rectPoints[(j + 1) % 4], new Scalar(255, 0, 0), 2);
-            }
+            Core.rectangle(image, target.tl(), target.br(), new Scalar(255, 0, 0));
 
             // Check the orientation of the target
-            boolean isHorizontal = target.size.width < target.size.height;
+            boolean isHorizontal = target.width > target.height;
             if (isHorizontal) {
                 horizontalTargets.add(target);
             } else {
@@ -297,29 +293,49 @@ public class LuNaCV {
 
             // Display information about target
             System.out.print("Target " + i + ": Vertices " + polygon.total() + " ");
-            System.out.print("Position: (" + target.center.x + "," + target.center.y + ") ");
-            System.out.print("Width: " + target.size.width + " Height: " + target.size.height + " ");
-            System.out.print("Area: " + (target.size.width * target.size.height) + " ");
-            System.out.print("Angle: " + target.angle + " ");
-            System.out.print("Distance: " + getTargetDistance(target.size.width, isHorizontal) + "\n");
-
-            // Draw the polygons in the output image
-            Imgproc.drawContours(drawing, polygons, i, new Scalar(255, 255, 255), -1);
+            System.out.print("Position: (" + target.x + "," + target.y + ") ");
+            System.out.print("Width: " + target.width + " Height: " + target.height + " ");
+            System.out.print("Area: " + (target.width * target.height) + " ");
+            double distance = getTargetDistance(target.width, isHorizontal);
+            distanceSum += distance;
+            System.out.print("Distance: " + distance + " ");
+            if (isHorizontal) {
+                System.out.println("Horizontal");
+            } else {
+                System.out.println("Vertical");
+            }
         }
 
+        // Draw the polygons in the output image
+        Mat drawing = Mat.zeros(thresh.size(), thresh.type());
+        for (int i = 0; i < polygons.size(); i++)
+            Imgproc.drawContours(drawing, polygons, i, new Scalar(255, 255, 255), -1);
+
+        // Estimate the distance to the target
+        double distance = distanceSum / polygons.size();
+        System.out.println("Estimated distance: " + distance);
+
         // Determine if the goal is hot or not
-        if (verticalTargets.size() <= 1) {
-            if (horizontalTargets.isEmpty()) {
-                System.out.println("Goal is not hot");
-            } else {
-                System.out.println("Goal is hot");
-            }
+        System.out.println("Horizontal Targets: " + horizontalTargets.size() + " Vertical Targets: " + verticalTargets.size());
+        boolean goalIsHot;
+        if (verticalTargets.size() == 1 && horizontalTargets.size() == 1) {
+            System.out.println("Goal is Hot");
+            goalIsHot = true;
+        } else if (verticalTargets.size() == 1 && horizontalTargets.isEmpty()) {
+            System.out.println("Goal is not hot");
+            goalIsHot = false;
+        } else {
+            System.out.println("Unsure if goal is hot or not...");
+            goalIsHot = false;
         }
 
         System.out.println("Image processed in " + (System.currentTimeMillis() - startTime) + "ms");
 
         // Send data to the robot
-        table.putBoolean("goalIsHot", true);
+        if (!debug) {
+            table.putBoolean("goalIsHot", goalIsHot);
+            table.putNumber("distance", distance);
+        }
 
         System.out.println();
         return drawing;
