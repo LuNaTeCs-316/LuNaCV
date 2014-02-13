@@ -72,7 +72,7 @@ public class LuNaCV {
 
     public void run() {
         // Load OpenCV native library
-        System.loadLibrary("opencv_java247");
+        System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
 
         // Initialize NetworkTables
         NetworkTable.setClientMode();
