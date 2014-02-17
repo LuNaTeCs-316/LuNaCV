@@ -6,6 +6,7 @@ import java.io.File;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JFrame;
+import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.highgui.Highgui;
 import org.opencv.highgui.VideoCapture;
@@ -21,7 +22,7 @@ public class AcquireSampleImages {
     private int saveCount = 0;
     
     public void run() {
-        System.loadLibrary("opencv_java247");
+        System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
         camera = new VideoCapture("http://10.3.16.11/mjpg/video.mjpg");
         frame = new Mat();
         

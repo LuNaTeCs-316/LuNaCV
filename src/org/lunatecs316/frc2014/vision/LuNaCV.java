@@ -32,8 +32,8 @@ import org.opencv.imgproc.Imgproc;
 public class LuNaCV {
     public static final String kCameraAddress = "http://10.3.16.11/mjpg/video.mjpg";
 
-    public static final int kImageWidth = 320;
-    public static final int kImageHeight = 240;
+    public static final int kImageWidth = 480;
+    public static final int kImageHeight = 360;
 
     public static final int kMinHue = 70;
     public static final int kMinSat = 53;
@@ -58,15 +58,17 @@ public class LuNaCV {
     private NetworkTable table;
     private JFrame frame;
     private CVMatPanel originalPanel;
+    private CVMatPanel thresholdPanel;
     private CVMatPanel processedPanel;
     private VideoCapture camera;
-
     private JSlider minHueSlider;
     private JSlider minSatSlider;
     private JSlider minValSlider;
     private JSlider maxHueSlider;
     private JSlider maxSatSlider;
     private JSlider maxValSlider;
+    private JSlider minAreaSlider;
+    private JSlider maxAreaSlider;
 
     private boolean done = false;
     private boolean debug = false;
@@ -117,6 +119,8 @@ public class LuNaCV {
         // Add Image panels
         originalPanel = new CVMatPanel(kImageWidth, kImageHeight);
         frame.getContentPane().add(originalPanel);
+        thresholdPanel = new CVMatPanel(kImageWidth, kImageHeight);
+        frame.getContentPane().add(thresholdPanel);
         processedPanel = new CVMatPanel(kImageWidth, kImageHeight);
         frame.getContentPane().add(processedPanel);
 
@@ -135,6 +139,10 @@ public class LuNaCV {
         maxSatSlider = new JSlider(JSlider.HORIZONTAL, 0, 255, kMaxSat);
         JLabel maxValLabel = new JLabel("maxVal");
         maxValSlider = new JSlider(JSlider.HORIZONTAL, 0, 255, kMaxVal);
+        JLabel minAreaLabel = new JLabel("minArea");
+        minAreaSlider = new JSlider(JSlider.HORIZONTAL, 0, 2000, kMinTargetArea);
+        JLabel maxAreaLabel = new JLabel("maxArea");
+        maxAreaSlider = new JSlider(JSlider.HORIZONTAL, 0, 2000, kMaxTargetArea);
         sliders.add(minHueLabel);
         sliders.add(minHueSlider);
         sliders.add(minSatLabel);
@@ -147,6 +155,10 @@ public class LuNaCV {
         sliders.add(maxSatSlider);
         sliders.add(maxValLabel);
         sliders.add(maxValSlider);
+        sliders.add(minAreaLabel);
+        sliders.add(minAreaSlider);
+        sliders.add(maxAreaLabel);
+        sliders.add(maxAreaSlider);
         frame.getContentPane().add(sliders);
 
         // Display the frame
@@ -228,6 +240,8 @@ public class LuNaCV {
         Mat morphKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(kMorphKernelSize, kMorphKernelSize));
         Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_OPEN, morphKernel);
 
+        thresholdPanel.showMat(thresh);
+        
         // Find contours
         List<MatOfPoint> contours = new ArrayList<>();
         Mat heirarchy = new Mat();
