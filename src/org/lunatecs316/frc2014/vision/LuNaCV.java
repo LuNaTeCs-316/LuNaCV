@@ -35,16 +35,16 @@ public class LuNaCV {
     public static final int kImageWidth = 480;
     public static final int kImageHeight = 360;
 
-    public static final int kMinHue = 70;
+    public static final int kMinHue = 58;
     public static final int kMinSat = 53;
-    public static final int kMinVal = 93;
+    public static final int kMinVal = 115;
     public static final int kMaxHue = 180;
     public static final int kMaxSat = 255;
     public static final int kMaxVal = 255;
     public static final int kMorphKernelSize = 2;
 
     public static final int kMinTargetArea = 75;            // px
-    public static final int kMaxTargetArea = 750;           // px
+    public static final int kMaxTargetArea = 800;           // px
     public static final double kApproxPolyTolerance = 0.0295;
 
     public static final double kStaticTargetWidth = 4;      // Inches
@@ -172,16 +172,20 @@ public class LuNaCV {
     private void processCameraFeed() {
         Mat original = new Mat();
         while (!done) {
-            if (camera.isOpened()) {// && table.getBoolean("enabled", true)) {
+            if (camera == null)
+                camera = new VideoCapture(kCameraAddress);
+            if (camera.isOpened()) {
                 if (camera.read(original)) {
                     Mat processed = processImage(original);
                     originalPanel.showMat(original);
                     processedPanel.showMat(processed);
                 } else {
                     System.err.println("Error: unable to read image");
+                    camera = null;
                 }
             } else {
                 System.out.println("Error: camera is not open");
+                camera = null;
                 try {
                     Thread.sleep(5000);
                 } catch (InterruptedException ex) {
